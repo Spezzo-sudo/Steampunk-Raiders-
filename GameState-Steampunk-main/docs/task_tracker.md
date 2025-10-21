@@ -10,7 +10,7 @@ Dieses Logbuch hält alle geplanten Arbeiten fest. Abgeschlossene Punkte bleiben
 - [x] Micro-Feedback: Toasts & Timer – `useUiStore` und `ToastViewport` ergänzt, Timerformat in Karten vereinheitlicht und Fortschrittsanzeigen in `src/components/ui/ProgressBar.tsx` verfeinert.
 - [x] Übersicht/Queue-Verbesserung – `OverviewView` erweitert, um Auftragslisten mit Icons, Restzeiten und Engpass-Hinweisen darzustellen.
 - [x] Forschung gruppieren – Tabs und Sperrzustände in `ResearchView` ergänzt, um Kategorien und Voraussetzungen klar zu visualisieren.
-- [x] Mergekonflikte bereinigt – Layout-, Topbar- und Kartenänderungen mit dem aktuellen Main-Stand vereint und Scroll-Probleme im App-Container behoben, damit der Branch ohne Konflikte mergen kann. Rebase-Strategie angewendet (`git fetch origin && git rebase origin/main`), Konflikte gemäß Projektregeln (`constants.ts`, `gameStore.ts`, `GalaxyHexMap.tsx`) aufgelöst und anschließend mit `npm run build` sowie `npx tsc --noEmit` verifiziert.
+- [ ] Mergekonflikte bereinigt – Remote-Rebase steht noch aus. Aktueller Blocker: `fatal: 'origin' does not appear to be a git repository`. Nächste Schritte: Remote-URL prüfen/setzen, Branch sichern (`git checkout -b <branch>-backup`), `git fetch origin --prune`, danach `git rebase origin/main` und Konflikte gemäß Projektregeln (`constants.ts`, `gameStore.ts`, `GalaxyHexMap.tsx`) auflösen. Abschließend `npm ci`, `npm run build`, `npx tsc --noEmit` und `git push --force-with-lease`.
 - [ ] Liste ↔ Hex-Map Sync – Hover/Klick-Synchronisation zwischen Tabelle und Hex-Map implementieren.
 - [ ] Map-Controls – Zoom-Controls, Reset und Koordinaten-Sprung ergänzen.
 - [ ] Suche & Filter in der Tabelle – Suchfeld, Biom-Filter und Sticky-Header der Galaxie-Tabelle fertigstellen.
@@ -31,7 +31,7 @@ Dieses Logbuch hält alle geplanten Arbeiten fest. Abgeschlossene Punkte bleiben
 ## Merge-Checkliste
 
 - [x] Branch-Backup erstellt (`git checkout -b <branch>-backup`), um bei Bedarf sicher zurückrollen zu können.
-- [x] Rebase gegen `origin/main` durchgeführt und alle Konflikte entlang der definierten Entscheidungsregeln (`constants.ts` → ours, `gameStore.ts` → ours, UI-Dateien manuell zusammenführen) gelöst.
+- [ ] Rebase gegen `origin/main` durchgeführt und Konflikte nach den Projektregeln gelöst – steht aus, sobald Remote wieder erreichbar ist.
 - [x] Dependencies erneuert (`npm ci`) und Builds (`npm run build`, `npx tsc --noEmit`) erfolgreich abgeschlossen.
-- [x] Merge-fähigen Zustand auf GitHub bestätigt – Anzeige „This branch has no conflicts with the base branch“.
+- [ ] Merge-fähigen Zustand auf GitHub bestätigt – Remotes aktuell nicht erreichbar (`fatal: 'origin' does not appear to be a git repository`). Nach erfolgreichem Rebase GitHub-Status prüfen.
 
