@@ -7,6 +7,9 @@ interface GalaxyHexMapProps {
   selectedPlanet?: string | null;
   onSelect: (planet: Planet) => void;
   onHover?: (planet: Planet | null) => void;
+  zoom?: number;
+  onZoomChange?: (zoom: number) => void;
+  resetSignal?: number;
 }
 
 const HEX_SIZE = 46;
@@ -28,29 +31,42 @@ const hexPath = (x: number, y: number) => {
   return points.join(' ');
 };
 
+/**
+ * Interaktive Hex-Map mit optional extern gesteuerter Zoomstufe und Reset-Signal.
+ */
 const GalaxyHexMap: React.FC<GalaxyHexMapProps> = ({
   planets,
   selectedPlanet,
   onSelect,
   onHover,
+  zoom,
+  onZoomChange,
+  resetSignal,
 }) => {
-  // State for zoom level and panning offset
-  const [zoom, setZoom] = React.useState(1);
+  const [internalZoom, setInternalZoom] = React.useState(1);
+  const currentZoom = typeof zoom === 'number' ? zoom : internalZoom;
   const [offset, setOffset] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const dragStart = React.useRef<{ x: number; y: number } | null>(null);
 
+  const setZoomValue = React.useCallback(
+    (value: number) => {
+      const bounded = Math.min(Math.max(value, 0.5), 3);
+      if (typeof onZoomChange === 'function') {
+        onZoomChange(bounded);
+      } else {
+        setInternalZoom(bounded);
+      }
+    },
+    [onZoomChange],
+  );
+
   const handleWheel = React.useCallback(
     (e: React.WheelEvent<SVGSVGElement>) => {
-      // Prevent the page from scrolling while zooming
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.1 : -0.1;
-      setZoom((prev) => {
-        const next = prev + delta;
-        // Bound zoom between 0.5x and 3x
-        return Math.min(Math.max(next, 0.5), 3);
-      });
+      setZoomValue(currentZoom + delta);
     },
-    [],
+    [currentZoom, setZoomValue],
   );
 
   const handleMouseDown = React.useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -59,7 +75,9 @@ const GalaxyHexMap: React.FC<GalaxyHexMapProps> = ({
 
   const handleMouseMove = React.useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
-      if (!dragStart.current) return;
+      if (!dragStart.current) {
+        return;
+      }
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
       dragStart.current = { x: e.clientX, y: e.clientY };
@@ -71,6 +89,22 @@ const GalaxyHexMap: React.FC<GalaxyHexMapProps> = ({
   const handleMouseUp = React.useCallback(() => {
     dragStart.current = null;
   }, []);
+
+  React.useEffect(() => {
+    if (typeof zoom === 'number') {
+      setInternalZoom(zoom);
+    }
+  }, [zoom]);
+
+  React.useEffect(() => {
+    if (resetSignal !== undefined) {
+      setOffset({ x: 0, y: 0 });
+      if (typeof zoom !== 'number') {
+        setInternalZoom(1);
+      }
+    }
+  }, [resetSignal, zoom]);
+
   const positioned = planets.map((planet) => {
     const { x, y } = axialToPixel(planet.axial.q, planet.axial.r);
     return { planet, x, y };
@@ -88,7 +122,7 @@ const GalaxyHexMap: React.FC<GalaxyHexMapProps> = ({
     <div className="steampunk-glass steampunk-border rounded-lg p-4">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-[420px]"
+        className="h-[420px] w-full"
         role="presentation"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -103,7 +137,7 @@ const GalaxyHexMap: React.FC<GalaxyHexMapProps> = ({
           </radialGradient>
         </defs>
 
-        <g transform={`translate(${offset.x}, ${offset.y}) scale(${zoom})`}>
+        <g transform={`translate(${offset.x}, ${offset.y}) scale(${currentZoom})`}>
           {positioned.map(({ planet, x, y }) => {
             const biomeStyle = BIOME_STYLES[planet.biome];
             const translatedX = x - minX + padding;
