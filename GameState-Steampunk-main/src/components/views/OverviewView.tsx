@@ -1,104 +1,190 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { BUILDINGS, RESEARCH } from '@/constants';
 import ProgressBar from '@/components/ui/ProgressBar';
-import { BuildQueueItem } from '@/types';
+import { BuildQueueItem, ResourceType } from '@/types';
+import { LAYOUT_CLASSES } from '@/styles/layout';
 
-const formatTime = (ms: number) => {
-    if(ms < 0) ms = 0;
-    const totalSeconds = Math.floor(ms / 1000);
-    const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
-    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
-    const s = (totalSeconds % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${s}`;
+const formatDuration = (ms: number) => {
+  if (ms < 0) {
+    ms = 0;
+  }
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds >= 5940) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+      .toString()
+      .padStart(2, '0');
+    const seconds = Math.floor(totalSeconds % 60)
+      .toString()
+      .padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  }
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const seconds = Math.floor(totalSeconds % 60)
+    .toString()
+    .padStart(2, '0');
+  return `${minutes}:${seconds}`;
+};
+
+const QUEUE_ICONS: Record<'building' | 'research', string> = {
+  building: '🏭',
+  research: '🔬',
+};
+
+interface QueueCardProps {
+  entityId: string;
+  items: BuildQueueItem[];
 }
 
-const QueueItem: React.FC<{item: BuildQueueItem}> = ({ item }) => {
-    const now = Date.now();
-    const isBuilding = now >= item.startTime;
+const QueueCard: React.FC<QueueCardProps> = ({ entityId, items }) => {
+  const now = Date.now();
+  const entity = BUILDINGS[entityId] || RESEARCH[entityId];
+  if (!entity) {
+    return null;
+  }
+  const isBuilding = Boolean(BUILDINGS[entityId]);
+  const icon = isBuilding ? QUEUE_ICONS.building : QUEUE_ICONS.research;
+  const activeItem = items.find((item) => now >= item.startTime && now < item.endTime) ?? null;
 
-    if (isBuilding) {
-        const remainingTime = item.endTime - now;
-        const totalTime = item.endTime - item.startTime;
-        const progress = totalTime > 0 ? ((totalTime - remainingTime) / totalTime) * 100 : 100;
-
-        return (
-             <li className="list-none">
-                <div className="flex justify-between text-sm mb-1">
-                    <span className="font-semibold text-yellow-300">[In Arbeit] Stufe {item.level}</span>
-                    <span className="font-mono">{formatTime(remainingTime)}</span>
-                </div>
-                <ProgressBar progress={progress} />
+  return (
+    <li className="rounded-xl border border-yellow-800/30 bg-black/45 p-4 shadow-lg">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-left">
+          <span className="text-2xl" aria-hidden>
+            {icon}
+          </span>
+          <div>
+            <p className="font-cinzel text-sm uppercase tracking-wide text-yellow-200">{entity.name}</p>
+            <p className="text-xs text-gray-300">{items.length} Auftrag{items.length > 1 ? 'e' : ''}</p>
+          </div>
+        </div>
+        {activeItem ? (
+          <span className="font-mono text-sm text-yellow-100">{formatDuration(activeItem.endTime - now)}</span>
+        ) : (
+          <span className="text-xs text-gray-400">Wartet</span>
+        )}
+      </div>
+      {activeItem && (
+        <div className="mt-3">
+          <ProgressBar
+            progress={((now - activeItem.startTime) / (activeItem.endTime - activeItem.startTime)) * 100}
+          />
+          <p className="mt-1 text-xs text-gray-300">
+            Stufe {activeItem.level - 1} → {activeItem.level}
+          </p>
+        </div>
+      )}
+      <ul className="mt-4 space-y-2 text-xs text-gray-300">
+        {items.map((item) => {
+          const statusLabel = now >= item.endTime ? 'Abgeschlossen' : now >= item.startTime ? 'In Arbeit' : 'Wartet';
+          return (
+            <li key={`${entityId}-${item.level}`} className="flex items-center justify-between">
+              <span>{statusLabel}</span>
+              <span className="font-mono">{formatDuration((item.endTime - now) > 0 ? item.endTime - now : item.endTime - item.startTime)}</span>
             </li>
-        )
+          );
+        })}
+      </ul>
+    </li>
+  );
+};
+
+const useBottleneck = () => {
+  const resources = useGameStore((state) => state.resources);
+  const storage = useGameStore((state) => state.storage);
+  const kesseldruck = useGameStore((state) => state.kesseldruck);
+
+  return useMemo(() => {
+    if (kesseldruck.net < 0) {
+      return `Kesseldruck fällt um ${Math.abs(Math.round(kesseldruck.net))} bar`; // no timer without server ticks
     }
+    const nearingFull = (Object.values(ResourceType) as ResourceType[])
+      .map((resource) => ({
+        resource,
+        remaining: storage[resource] - resources[resource],
+      }))
+      .sort((a, b) => a.remaining - b.remaining)[0];
+    if (nearingFull && nearingFull.remaining <= storage[nearingFull.resource] * 0.1) {
+      return `${nearingFull.resource} Lager füllt sich in Kürze`;
+    }
+    return 'Keine Engpässe in Sicht';
+  }, [kesseldruck.net, resources, storage]);
+};
 
-    const duration = item.endTime - item.startTime;
-    return (
-        <li className="list-none opacity-70">
-            <div className="flex justify-between text-sm">
-                <span>[Wartend] Stufe {item.level}</span>
-                <span className="font-mono">Dauer: {formatTime(duration)}</span>
-            </div>
-        </li>
-    )
-}
-
-
+/**
+ * Übersicht mit Fokus auf Warteschlangen, Engpässen und Planetenstatus.
+ */
 const OverviewView: React.FC = () => {
-    const buildQueue = useGameStore((state) => state.buildQueue);
-    const buildings = useGameStore((state) => state.buildings);
-    const research = useGameStore((state) => state.research);
+  const buildQueue = useGameStore((state) => state.buildQueue);
+  const buildings = useGameStore((state) => state.buildings);
+  const research = useGameStore((state) => state.research);
+  const bottleneck = useBottleneck();
 
-    // FIX: Explizite Typisierung von `groupedQueue`, um Inferenzfehler des Compilers zu beheben, die zu 'unknown'-Typen führten.
-    const groupedQueue: Record<string, BuildQueueItem[]> = buildQueue.reduce((acc, item) => {
+  const groupedQueue = useMemo(() => {
+    return buildQueue.reduce<Record<string, BuildQueueItem[]>>((acc, item) => {
       if (!acc[item.entityId]) {
         acc[item.entityId] = [];
       }
       acc[item.entityId].push(item);
       return acc;
-    }, {} as Record<string, BuildQueueItem[]>);
-    
-    return (
-        <div>
-            <h2 className="text-4xl font-cinzel text-yellow-400 mb-6 border-b-2 border-yellow-800/50 pb-2">Planetenübersicht</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 steampunk-glass steampunk-border p-6 rounded-lg flex items-center justify-center flex-col">
-                     <img src="https://picsum.photos/seed/steampunkplanet/500/300" alt="Planet" className="rounded-full border-4 border-yellow-600/50 shadow-lg mb-4 h-48 w-48 object-cover"/>
-                     <h3 className="text-3xl font-cinzel">Heimatplanet "Chronos Prime"</h3>
-                     <p className="text-gray-400">Koordinaten: [1:1:1]</p>
-                </div>
-                <div className="steampunk-glass steampunk-border p-6 rounded-lg">
-                    <h3 className="text-2xl font-cinzel text-yellow-400 mb-4">Bauschleife</h3>
-                    {buildQueue.length > 0 ? (
-                        <div className="space-y-6">
-                           {Object.entries(groupedQueue).map(([entityId, items]) => {
-                                const entity = BUILDINGS[entityId] || RESEARCH[entityId];
-                                if (!entity) return null;
+    }, {});
+  }, [buildQueue]);
 
-                        const isBuilding = 'baseProduction' in entity || entity.id === 'dampfkraftwerk';
-                                const currentLevel = isBuilding ? (buildings[entityId] || 0) : (research[entityId] || 0);
-                                const highestQueuedLevel = items[items.length - 1].level;
-
-                                return (
-                                    <div key={entityId}>
-                                        <h4 className="font-cinzel text-lg text-yellow-200 mb-2 border-b border-yellow-800/30 pb-1">
-                                            {entity.name} (Stufe {currentLevel} → {highestQueuedLevel})
-                                        </h4>
-                                        <ul className="space-y-3 pl-2">
-                                            {items.map(item => <QueueItem key={item.level} item={item} />)}
-                                        </ul>
-                                    </div>
-                                )
-                           })}
-                        </div>
-                    ) : (
-                        <p className="text-gray-400 text-center pt-8">Keine Aufträge in der Bauschleife.</p>
-                    )}
-                </div>
-            </div>
+  return (
+    <section className={LAYOUT_CLASSES.section}>
+      <header className="space-y-2">
+        <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Planetenübersicht</h2>
+        <p className="text-sm text-gray-300">Behalte Baufortschritt, Engpässe und die aktuelle Produktionslage im Blick.</p>
+      </header>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-6 rounded-2xl border border-yellow-800/30 bg-black/45 p-6 text-center shadow-xl">
+          <img
+            src="https://picsum.photos/seed/steampunkplanet/500/300"
+            alt="Planet Chronos Prime"
+            className="mx-auto h-48 w-48 rounded-full border-4 border-yellow-600/50 object-cover shadow-lg"
+          />
+          <div className="space-y-1">
+            <h3 className="text-[clamp(1.3rem,1vw+1.1rem,1.8rem)] font-cinzel">Heimatplanet "Chronos Prime"</h3>
+            <p className="text-sm text-gray-400">Koordinaten: [1:1:1]</p>
+            <p className="text-xs uppercase tracking-wide text-yellow-200">{bottleneck}</p>
+          </div>
         </div>
-    );
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-yellow-800/30 bg-black/50 p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Bauschleife</h3>
+              <span className="text-xs text-gray-400">{buildQueue.length} aktive Aufträge</span>
+            </div>
+            {buildQueue.length > 0 ? (
+              <ul className="mt-4 space-y-3">
+                {Object.entries(groupedQueue).map(([entityId, items]) => (
+                  <QueueCard key={entityId} entityId={entityId} items={items} />
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-6 text-center text-sm text-gray-400">Keine Aufträge in der Warteschlange.</p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-yellow-800/30 bg-black/50 p-6 shadow-xl">
+            <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Status</h3>
+            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm text-gray-200 sm:grid-cols-2">
+              <div className="rounded-lg bg-black/40 p-3">
+                <dt className="text-xs uppercase tracking-wide text-yellow-300">Aktive Gebäude</dt>
+                <dd>{Object.keys(buildings).length} Strukturen</dd>
+              </div>
+              <div className="rounded-lg bg-black/40 p-3">
+                <dt className="text-xs uppercase tracking-wide text-yellow-300">Forschungsstufen</dt>
+                <dd>{Object.keys(research).length} Projekte</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 };
 
 export default OverviewView;
