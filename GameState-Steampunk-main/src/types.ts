@@ -1,4 +1,3 @@
-// FIX: Der zirkuläre Import von 'Resources' wurde entfernt, um den Namenskonflikt mit der lokalen Typdefinition zu beheben.
 export enum ResourceType {
   Orichalkum = 'Orichalkum',
   Fokuskristalle = 'Fokuskristalle',
@@ -28,6 +27,18 @@ export interface Research {
   description: string;
   baseCost: Resources;
   costMultiplier: number;
+}
+
+export interface ShipBlueprint {
+  id: string;
+  name: string;
+  description: string;
+  role: 'Aufklärung' | 'Transport' | 'Angriff' | 'Unterstützung';
+  hangarSlots: number;
+  baseCost: Resources;
+  buildTimeSeconds: number;
+  crew: number;
+  cargo: number;
 }
 
 export enum View {
