@@ -21,6 +21,7 @@ import {
   MAX_BUILD_QUEUE_LENGTH,
 } from '@/constants';
 import { calculateKesseldruck, calculateResourceProductionPerTick } from '@/lib/economy';
+import { ToastVariant, useUiStore } from '@/store/uiStore';
 
 type GameState = {
   resources: Resources;
@@ -50,6 +51,12 @@ const RESOURCE_TYPES = Object.values(ResourceType) as ResourceType[];
 
 const createInitialKesseldruck = () => calculateKesseldruck(INITIAL_BUILDING_LEVELS);
 
+interface ToastPayload {
+  title: string;
+  description: string;
+  variant: ToastVariant;
+}
+
 /**
  * Central Zustand store that manages the client-side simulation and progression state.
  */
@@ -64,7 +71,7 @@ export const useGameStore = create<GameState & GameActions>()(
     buildQueue: [],
 
     setView: (view) => set({ activeView: view }),
-    
+
     canAfford: (cost) => {
       const { resources } = get();
       return (
@@ -87,7 +94,7 @@ export const useGameStore = create<GameState & GameActions>()(
       cost[ResourceType.Vitriol] = Math.floor(entity.baseCost[ResourceType.Vitriol] * multiplier);
       return cost;
     },
-    
+
     getBuildTime: (cost) => {
       const totalCost =
         cost[ResourceType.Orichalkum] +
@@ -98,18 +105,42 @@ export const useGameStore = create<GameState & GameActions>()(
     },
 
     startUpgrade: (entity) => {
+      const toasts: ToastPayload[] = [];
       set((state) => {
         const isBuilding = 'baseProduction' in entity || entity.id === 'dampfkraftwerk';
         const currentLevel = isBuilding ? state.buildings[entity.id] || 0 : state.research[entity.id] || 0;
-        
+
         const lastQueuedLevel = state.buildQueue
-            .filter(item => item.entityId === entity.id)
-            .reduce((max, item) => Math.max(max, item.level), currentLevel);
+          .filter((item) => item.entityId === entity.id)
+          .reduce((max, item) => Math.max(max, item.level), currentLevel);
 
         const nextLevel = lastQueuedLevel + 1;
-
         const cost = get().getUpgradeCost(entity, nextLevel);
-        if (!get().canAfford(cost) || state.buildQueue.length >= MAX_BUILD_QUEUE_LENGTH) return;
+        const queueIsFull = state.buildQueue.length >= MAX_BUILD_QUEUE_LENGTH;
+
+        if (!get().canAfford(cost)) {
+          const missingResources = RESOURCE_TYPES.filter((resource) => state.resources[resource] < cost[resource])
+            .map(
+              (resource) =>
+                `${resource}: ${(cost[resource] - state.resources[resource]).toLocaleString('de-DE')}`,
+            )
+            .join(', ');
+          toasts.push({
+            title: 'Ressourcen fehlen',
+            description: `Es fehlen ${missingResources}.`,
+            variant: ToastVariant.Warning,
+          });
+          return;
+        }
+
+        if (queueIsFull) {
+          toasts.push({
+            title: 'Warteschlange voll',
+            description: `Maximal ${MAX_BUILD_QUEUE_LENGTH} Aufträge erlaubt.`,
+            variant: ToastVariant.Warning,
+          });
+          return;
+        }
 
         state.resources[ResourceType.Orichalkum] -= cost[ResourceType.Orichalkum];
         state.resources[ResourceType.Fokuskristalle] -= cost[ResourceType.Fokuskristalle];
@@ -122,50 +153,62 @@ export const useGameStore = create<GameState & GameActions>()(
         const endTime = startTime + buildTime * 1000;
 
         state.buildQueue.push({ entityId: entity.id, level: nextLevel, startTime, endTime });
+
+        toasts.push({
+          title: 'Bauauftrag gestartet',
+          description: `${entity.name} erreicht Stufe ${nextLevel}.`,
+          variant: ToastVariant.Success,
+        });
       });
+      const { pushToast } = useUiStore.getState();
+      toasts.forEach((toast) => pushToast(toast));
     },
 
     gameTick: () => {
+      const completionToasts: ToastPayload[] = [];
       set((state) => {
-        // 1. Process build queue
         const now = Date.now();
         const finishedItems = state.buildQueue.filter((item) => now >= item.endTime);
-        
+
         if (finishedItems.length > 0) {
-            finishedItems.forEach(item => {
-                const entity = BUILDINGS[item.entityId] || RESEARCH[item.entityId];
-                if (!entity) {
-                  console.error(`Could not find entity with ID: ${item.entityId} in build queue.`);
-                  return; // Skip this item
-                }
-                const isBuilding = 'baseProduction' in entity || entity.id === 'dampfkraftwerk';
-                if (isBuilding) {
-                    state.buildings[item.entityId] = item.level;
-                } else {
-                    state.research[item.entityId] = item.level;
-                }
+          finishedItems.forEach((item) => {
+            const entity = BUILDINGS[item.entityId] || RESEARCH[item.entityId];
+            if (!entity) {
+              console.error(`Could not find entity with ID: ${item.entityId} in build queue.`);
+              return;
+            }
+            const isBuilding = 'baseProduction' in entity || entity.id === 'dampfkraftwerk';
+            if (isBuilding) {
+              state.buildings[item.entityId] = item.level;
+            } else {
+              state.research[item.entityId] = item.level;
+            }
+            completionToasts.push({
+              title: 'Auftrag abgeschlossen',
+              description: `${entity.name} ist nun Stufe ${item.level}.`,
+              variant: ToastVariant.Info,
             });
-            state.buildQueue = state.buildQueue.filter((item) => now < item.endTime);
+          });
+          state.buildQueue = state.buildQueue.filter((item) => now < item.endTime);
         }
 
-        // 2. Calculate energy production and consumption
         const kesseldruckState = calculateKesseldruck(state.buildings);
         state.kesseldruck.capacity = kesseldruckState.capacity;
         state.kesseldruck.consumption = kesseldruckState.consumption;
         state.kesseldruck.net = kesseldruckState.net;
         state.kesseldruck.efficiency = kesseldruckState.efficiency;
 
-        const income = calculateResourceProductionPerTick(
-          state.buildings,
-          SERVER_SPEED,
-          kesseldruckState.efficiency
-        );
+        const income = calculateResourceProductionPerTick(state.buildings, SERVER_SPEED, kesseldruckState.efficiency);
 
-        (RESOURCE_TYPES as ResourceType[]).forEach((resource) => {
+        RESOURCE_TYPES.forEach((resource) => {
           const nextAmount = state.resources[resource] + income[resource];
           state.resources[resource] = Math.min(state.storage[resource], nextAmount);
         });
       });
+      if (completionToasts.length > 0) {
+        const { pushToast } = useUiStore.getState();
+        completionToasts.forEach((toast) => pushToast(toast));
+      }
     },
-  }))
+  })),
 );

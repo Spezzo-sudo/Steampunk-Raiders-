@@ -1,5 +1,5 @@
 
-import { Building, Planet, PlanetBiome, Research, ResourceType, Resources } from './types';
+import { Building, Planet, PlanetBiome, Research, ResourceType, Resources, ShipBlueprint } from './types';
 
 /**
  * Starting resource amounts granted to every player at account creation.
@@ -373,3 +373,69 @@ export const BIOME_STYLES: Record<PlanetBiome, { label: string; fill: string; st
     stroke: '#c6a4ff',
   },
 };
+
+/**
+ * Blueprint-Definitionen für Schiffe der Werftansicht.
+ */
+export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
+  {
+    id: 'spaeherdrohne',
+    name: 'Späherdrohne',
+    description: 'Leichte Aufklärungseinheit mit minimalem Crewbedarf.',
+    role: 'Aufklärung',
+    hangarSlots: 1,
+    baseCost: {
+      [ResourceType.Orichalkum]: 300,
+      [ResourceType.Fokuskristalle]: 120,
+      [ResourceType.Vitriol]: 80,
+    },
+    buildTimeSeconds: 900,
+    crew: 2,
+    cargo: 50,
+  },
+  {
+    id: 'kohlenfrachter',
+    name: 'Kohlenfrachter',
+    description: 'Massiver Transporter für Langstreckenmissionen.',
+    role: 'Transport',
+    hangarSlots: 3,
+    baseCost: {
+      [ResourceType.Orichalkum]: 1200,
+      [ResourceType.Fokuskristalle]: 300,
+      [ResourceType.Vitriol]: 600,
+    },
+    buildTimeSeconds: 3200,
+    crew: 30,
+    cargo: 4500,
+  },
+  {
+    id: 'sturmfregatte',
+    name: 'Sturmfregatte',
+    description: 'Bewaffnete Kampffregatte mit ausgewogenem Verbrauch.',
+    role: 'Angriff',
+    hangarSlots: 4,
+    baseCost: {
+      [ResourceType.Orichalkum]: 2200,
+      [ResourceType.Fokuskristalle]: 800,
+      [ResourceType.Vitriol]: 900,
+    },
+    buildTimeSeconds: 5400,
+    crew: 85,
+    cargo: 800,
+  },
+  {
+    id: 'aetherträger',
+    name: 'Ätherträger',
+    description: 'Unterstützungsschiff mit Reparaturdrohnen und großer Crew.',
+    role: 'Unterstützung',
+    hangarSlots: 5,
+    baseCost: {
+      [ResourceType.Orichalkum]: 3400,
+      [ResourceType.Fokuskristalle]: 1400,
+      [ResourceType.Vitriol]: 1200,
+    },
+    buildTimeSeconds: 7600,
+    crew: 160,
+    cargo: 1200,
+  },
+];
